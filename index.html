@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500&display=swap" rel="stylesheet">
+  <title>PDF 直接文字編輯器 V6</title>
+  <style>
+    :root{
+      font-family:system-ui,-apple-system,"Segoe UI","Microsoft JhengHei",sans-serif;
+      color:#18212b;background:#eef2f5;
+      --line:#d6dde5;--accent:#087f73;--accent2:#0d9488;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;height:100%;overflow:hidden}
+    button,input,select,label{font:inherit}
+    #topbar{
+      height:62px;background:#fff;border-bottom:1px solid var(--line);
+      display:flex;align-items:center;gap:8px;padding:9px 12px;white-space:nowrap;
+      box-shadow:0 1px 3px rgba(0,0,0,.04);position:relative;z-index:50;
+    }
+    .btn,button{
+      height:42px;border:1px solid #cbd5df;background:#fff;border-radius:9px;
+      padding:0 13px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:#17212b;
+    }
+    .btn:hover,button:hover{background:#f6f8fa}
+    button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+    button.primary:hover{background:#066e65}
+    #saveBtn{
+      position:fixed;right:18px;bottom:18px;z-index:90;height:50px;padding:0 18px;
+      border-radius:12px;box-shadow:0 8px 24px rgba(8,127,115,.28);font-weight:700;
+    }
+    #saveBtn:hover{transform:translateY(-1px);box-shadow:0 10px 28px rgba(8,127,115,.34)}
+    button.active{background:#dff9f4;border-color:#4dd3c2;box-shadow:0 0 0 2px rgba(13,148,136,.12)}
+    button:disabled{opacity:.45;cursor:not-allowed}
+    input[type=file]{display:none}
+    .sep{width:1px;height:32px;background:#e4e8ed;margin:0 2px}
+    .tool-label{font-size:11px;color:#718096;margin-right:-5px}
+    #fontFamily{height:42px;width:170px;border:1px solid #cbd5df;border-radius:9px;background:#fff;padding:0 9px}
+    #fontSize{height:42px;width:72px;border:1px solid #cbd5df;border-radius:9px;padding:0 8px}
+    #boldBoost{height:42px;width:68px;border:1px solid #cbd5df;border-radius:9px;padding:0 7px}
+    #textColor{width:42px;height:42px;border:1px solid #cbd5df;border-radius:9px;padding:4px;background:#fff}
+    .check{height:42px;display:inline-flex;align-items:center;gap:5px;font-size:13px;color:#475569;cursor:pointer;padding:0 4px}
+    .check input{accent-color:var(--accent)}
+    #pageInfo,#zoomInfo{font-variant-numeric:tabular-nums;min-width:48px;text-align:center}
+    #fileStatus{margin-left:auto;max-width:230px;overflow:hidden;text-overflow:ellipsis;color:#657386;font-size:13px}
+
+    #workspace{height:calc(100vh - 62px);overflow:auto;padding:20px 24px 80px;position:relative}
+    #pageWrap{
+      position:relative;margin:0 auto;background:#fff;box-shadow:0 8px 30px rgba(15,23,42,.16);
+      transform-origin:top center;
+    }
+    #pdfCanvas,#editCanvas,#hitLayer{position:absolute;inset:0;display:block}
+    #pdfCanvas{z-index:1}
+    #editCanvas{z-index:2;pointer-events:none}
+    #hitLayer{z-index:3;pointer-events:auto;overflow:visible}
+    .hit{
+      position:absolute;display:block;background:transparent;border:1px solid transparent;
+      cursor:text;transform-origin:0 0;touch-action:none;
+    }
+    .hit:hover{border-color:rgba(16,185,129,.70);background:rgba(16,185,129,.045)}
+    .hit.selected{border-color:#0d9488;background:rgba(13,148,136,.07);box-shadow:0 0 0 1px rgba(255,255,255,.6) inset}
+    .hit.edited::after{
+      content:"";position:absolute;right:-4px;top:-4px;width:6px;height:6px;background:#0d9488;border-radius:50%;
+    }
+    #inlineEditor{
+      position:absolute;z-index:6;display:none;white-space:pre;outline:2px solid #0d9488;outline-offset:2px;
+      background:#fff;color:#111;padding:0;margin:0;border:0;min-width:12px;min-height:14px;
+      cursor:text;transform-origin:0 0;box-shadow:0 0 0 2px rgba(255,255,255,.85);
+    }
+    #inlineEditor:empty::before{content:" ";}
+    #selectionTag{
+      position:absolute;z-index:7;display:none;pointer-events:none;background:#0f766e;color:#fff;border-radius:5px;
+      padding:3px 6px;font-size:11px;line-height:1;transform:translateY(-100%);white-space:nowrap;
+    }
+    #emptyState{
+      height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#64748b;gap:10px;
+    }
+    #emptyState b{font-size:20px;color:#334155}
+    #bottomHint{
+      position:fixed;left:18px;bottom:18px;z-index:40;background:rgba(15,23,42,.88);
+      color:#fff;border-radius:999px;padding:8px 13px;font-size:12px;pointer-events:none;backdrop-filter:blur(6px);
+      max-width:calc(100vw - 220px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    }
+    #toast{
+      position:fixed;left:50%;bottom:58px;transform:translateX(-50%) translateY(8px);z-index:100;
+      background:#111827;color:#fff;border-radius:8px;padding:9px 13px;opacity:0;transition:.16s;pointer-events:none;
+    }
+    #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+    @media(max-width:1050px){
+      #topbar{overflow-x:auto}.tool-label,.check{display:none}#fileStatus{display:none}
+    }
+    @media(max-width:700px){
+      #saveBtn{right:12px;bottom:12px;height:48px;padding:0 15px}
+      #bottomHint{display:none}
+    }
+  </style>
+</head>
+<body>
+  <div id="topbar">
+    <label class="btn">📂 開啟 PDF<input id="pdfFile" type="file" accept="application/pdf"></label>
+    <label class="btn">🔤 載入字型<input id="fontFile" type="file" accept=".ttf,.otf,.ttc,.woff,.woff2,font/*"></label>
+    <button id="brushBtn" title="先點文字，再按格式刷，再點另一段文字">🖌 格式刷</button>
+    <button id="restoreBtn" title="把目前選到的文字恢復原樣">↩ 原字</button>
+    <button id="undoBtn" title="Ctrl+Z">↶</button>
+    <button id="redoBtn" title="Ctrl+Y">↷</button>
+
+    <span class="sep"></span>
+    <span class="tool-label">字型</span>
+    <select id="fontFamily">
+      <option value="Microsoft JhengHei">Microsoft JhengHei 微軟正黑體</option>
+      <option value="Microsoft JhengHei UI">Microsoft JhengHei UI</option>
+      <option value="Arial">Arial</option>
+      <option value="PMingLiU">PMingLiU 新細明體</option>
+      <option value="MingLiU">MingLiU 細明體</option>
+      <option value="Noto Sans TC">Noto Sans TC</option>
+      <option value="Noto Serif TC">Noto Serif TC</option>
+      <option value="Microsoft YaHei">Microsoft YaHei</option>
+      <option value="Segoe UI">Segoe UI</option>
+      <option value="Times New Roman">Times New Roman</option>
+    </select>
+    <span class="tool-label">pt</span>
+    <input id="fontSize" type="number" min="1" max="200" step="0.001" value="10" title="精確字級，保留小數">
+    <input id="textColor" type="color" value="#000000" title="文字顏色">
+    <span class="tool-label">微加粗</span>
+    <input id="boldBoost" type="number" min="0" max="1.5" step="0.02" value="0" title="微調筆畫厚度（pt）。0 = 不加粗，建議 0.05～0.20">
+    <label class="check" title="同字級時對齊原字形寬度；改字級時會等比例放大/縮小，不再把字壓扁"><input id="lockWidth" type="checkbox" checked> 保留原字形比例</label>
+
+    <span class="sep"></span>
+    <button id="prevBtn">◀</button><span id="pageInfo">0 / 0</span><button id="nextBtn">▶</button>
+    <button id="zoomOutBtn">−</button><span id="zoomInfo">100%</span><button id="zoomInBtn">＋</button>
+    <button id="fitBtn">適合寬度</button>
+
+    <span id="fileStatus">V6 · 先開啟 PDF</span>
+  </div>
+
+  <div id="workspace">
+    <div id="emptyState"><b>直接在 PDF 上改字</b><span>開啟 PDF 後，直接點文字就會出現游標；刪字、輸入、Enter 完成。</span></div>
+    <div id="pageWrap" hidden>
+      <canvas id="pdfCanvas"></canvas>
+      <canvas id="editCanvas"></canvas>
+      <div id="hitLayer"></div>
+      <div id="inlineEditor" contenteditable="true" spellcheck="false"></div>
+      <div id="selectionTag"></div>
+    </div>
+  </div>
+  <button id="saveBtn" class="primary" title="匯出 PDF（Ctrl+S）">💾 匯出 PDF</button>
+  <div id="bottomHint">點文字直接修改 · 微加粗 0.05～0.20 pt 可補筆畫 · Enter 完成 · Ctrl+S 匯出</div>
+  <div id="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script type="module">
+    import * as pdfjsLib from 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs';
+
+    const $ = s => document.querySelector(s);
+    const pdfFile=$('#pdfFile'), fontFile=$('#fontFile'), workspace=$('#workspace'), pageWrap=$('#pageWrap');
+    const pdfCanvas=$('#pdfCanvas'), editCanvas=$('#editCanvas'), hitLayer=$('#hitLayer');
+    const inlineEditor=$('#inlineEditor'), selectionTag=$('#selectionTag'), fileStatus=$('#fileStatus');
+    const fontFamily=$('#fontFamily'), fontSize=$('#fontSize'), textColor=$('#textColor'), boldBoost=$('#boldBoost'), lockWidth=$('#lockWidth');
+    const brushBtn=$('#brushBtn'), pageInfo=$('#pageInfo'), zoomInfo=$('#zoomInfo');
+    const emptyState=$('#emptyState');
+
+    let pdfBytes=null, pdfDoc=null, pageNum=1, zoom=1, cssViewport=null, renderJob=null, renderSerial=0;
+    let pageTextItems=[], infoByIdx=new Map(), selectedIdx=null, editorIdx=null, editorOriginalText='';
+    let edits=[], undoStack=[], redoStack=[];
+    let brush=null, brushArmed=false, loadedName='';
+    let dpr=Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    const measureCanvas=document.createElement('canvas'), measureCtx=measureCanvas.getContext('2d');
+
+    const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._to);t._to=setTimeout(()=>t.classList.remove('show'),1500)};
+    const cloneEdits=()=>edits.map(e=>({...e}));
+    const editKey=(p,i)=>`${p}:${i}`;
+    const getEdit=(p,i)=>edits.find(e=>e.page===p&&e.idx===i);
+    const isCJK=s=>/[\u3400-\u9fff\uf900-\ufaff]/.test(s||'');
+    const isGeneric=f=>!f || /^(sans-serif|serif|monospace)$/i.test(f.trim());
+
+    pdfFile.addEventListener('change', async ev=>{
+      const f=ev.target.files?.[0]; if(!f)return;
+      await closeEditor(true);
+      fileStatus.textContent='讀取中…';
+      try{
+        pdfBytes=new Uint8Array(await f.arrayBuffer());
+        pdfDoc=await pdfjsLib.getDocument({data:pdfBytes.slice()}).promise;
+        loadedName=f.name; pageNum=1; edits=[]; undoStack=[]; redoStack=[]; selectedIdx=null;
+        emptyState.hidden=true; pageWrap.hidden=false;
+        await fitWidth(true);
+        fileStatus.textContent=`${f.name} · ${pdfDoc.numPages} 頁`;
+      }catch(err){console.error(err);fileStatus.textContent='PDF 讀取失敗';toast('PDF 讀取失敗')}
+    });
+
+    fontFile.addEventListener('change', async ev=>{
+      const f=ev.target.files?.[0]; if(!f)return;
+      try{
+        const fam=`UserFont_${Date.now()}`;
+        const face=new FontFace(fam, await f.arrayBuffer());
+        await face.load(); document.fonts.add(face);
+        const op=document.createElement('option');op.value=fam;op.textContent=`${f.name}（已載入）`;fontFamily.prepend(op);fontFamily.value=fam;
+        if(selectedIdx!==null) applyToolbarFormat(false);
+        toast('字型已載入');
+      }catch(err){console.error(err);toast('這個字型檔瀏覽器無法載入')}
+    });
+
+    async function renderPage(){
+      if(!pdfDoc)return;
+      const serial=++renderSerial;
+      await closeEditor(true);
+      selectedIdx=null; selectionTag.style.display='none';
+      document.querySelectorAll('.hit.selected').forEach(x=>x.classList.remove('selected'));
+      const page=await pdfDoc.getPage(pageNum);
+      cssViewport=page.getViewport({scale:zoom});
+      dpr=Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+      const renderViewport=page.getViewport({scale:zoom*dpr});
+
+      const cssW=Math.ceil(cssViewport.width), cssH=Math.ceil(cssViewport.height);
+      pdfCanvas.width=Math.ceil(renderViewport.width); pdfCanvas.height=Math.ceil(renderViewport.height);
+      editCanvas.width=Math.ceil(cssW*dpr); editCanvas.height=Math.ceil(cssH*dpr);
+      for(const c of [pdfCanvas,editCanvas]){c.style.width=cssW+'px';c.style.height=cssH+'px'}
+      pageWrap.style.width=cssW+'px';pageWrap.style.height=cssH+'px';
+      hitLayer.style.width=cssW+'px';hitLayer.style.height=cssH+'px';
+
+      if(renderJob){try{renderJob.cancel()}catch{}}
+      renderJob=page.render({canvasContext:pdfCanvas.getContext('2d'),viewport:renderViewport});
+      try{await renderJob.promise}catch(e){if(e?.name!=='RenderingCancelledException')throw e}
+      if(serial!==renderSerial)return;
+
+      const tc=await page.getTextContent({includeMarkedContent:false});
+      pageTextItems=tc.items;
+      buildHitLayer(tc);
+      drawEdits();
+      pageInfo.textContent=`${pageNum} / ${pdfDoc.numPages}`;
+      zoomInfo.textContent=`${Math.round(zoom*100)}%`;
+      updateNav();
+    }
+
+    function chooseFamily(item,styles,fontFamilyGuess){
+      const declared=styles[item.fontName]?.fontFamily;
+      if(declared && !isGeneric(declared)) return declared.replace(/["']/g,'');
+      return fontFamilyGuess.get(item.fontName) || (isCJK(item.str)?'Noto Sans TC':'Arial');
+    }
+
+    function buildHitLayer(tc){
+      hitLayer.innerHTML=''; infoByIdx=new Map();
+      const fontFamilyGuess=new Map();
+      for(const item of tc.items){
+        if(!item?.str)continue;
+        if(isCJK(item.str)) fontFamilyGuess.set(item.fontName,'Noto Sans TC');
+        else if(!fontFamilyGuess.has(item.fontName)) fontFamilyGuess.set(item.fontName,'Arial');
+      }
+
+      const frag=document.createDocumentFragment();
+      tc.items.forEach((item,idx)=>{
+        if(!item?.str || !item.str.trim())return;
+        const tx=pdfjsLib.Util.transform(cssViewport.transform,item.transform);
+        const angle=Math.atan2(tx[1],tx[0]);
+        const fontH=Math.max(5,Math.hypot(tx[2],tx[3]) || (item.height*zoom) || 10);
+        const style=tc.styles[item.fontName]||{};
+        const ascent=Number.isFinite(style.ascent)?style.ascent:.88;
+        const descent=Number.isFinite(style.descent)?style.descent:-.22;
+        const baselineCss=tx[5];
+        const top=baselineCss-fontH*ascent;
+        const width=Math.max(4,item.width*zoom);
+        const height=Math.max(10,fontH*(ascent-descent));
+        const pdfFontSize=Math.max(.1, Math.hypot(item.transform[0],item.transform[1]) || item.height || fontH/zoom);
+        const family=chooseFamily(item,tc.styles,fontFamilyGuess);
+
+        const info={page:pageNum,idx,str:item.str,fontName:item.fontName,family,ascent,descent,
+          left:tx[4],top,baselineCss,width,height,angle,
+          pdfX:item.transform[4],pdfBaseline:item.transform[5],pdfWidth:item.width,pdfFontSize,
+          pdfAngle:Math.atan2(item.transform[1],item.transform[0])};
+        infoByIdx.set(idx,info);
+
+        const hit=document.createElement('span');
+        hit.className='hit'+(getEdit(pageNum,idx)?' edited':'');
+        hit.dataset.idx=String(idx);
+        const slop=2;
+        hit.style.left=(info.left-slop)+'px';hit.style.top=(info.top-slop)+'px';
+        hit.style.width=(width+slop*2)+'px';hit.style.height=(height+slop*2)+'px';
+        if(Math.abs(angle)>.0001) hit.style.transform=`rotate(${angle}rad)`;
+        frag.appendChild(hit);
+      });
+      hitLayer.appendChild(frag);
+    }
+
+    hitLayer.addEventListener('pointerdown', async ev=>{
+      const hit=ev.target.closest('.hit');
+      if(!hit)return;
+      ev.preventDefault();ev.stopPropagation();
+      const idx=Number(hit.dataset.idx);
+      if(brushArmed){
+        await closeEditor(true);
+        selectIdx(idx);
+        applyBrushTo(idx);
+        return;
+      }
+      if(editorIdx!==null && editorIdx!==idx) await closeEditor(true);
+      selectIdx(idx);
+      openEditor(idx,ev.clientX);
+    });
+
+    workspace.addEventListener('pointerdown', async ev=>{
+      if(ev.target.closest('#pageWrap') || ev.target.closest('#topbar'))return;
+      await closeEditor(true); clearSelection();
+    });
+
+    // V5: 保留原 PDF 真正看得到的墨跡寬度 (ink width)。
+    // 重要修正：當字級改變時，目標字形寬度會跟著字級同比例改變，
+    // 不再把較大的字硬塞回舊寬度，避免看起來被「左右壓扁」。
+    // 而不是 text advance / 外框寬。PDF 字型與 Canvas 字型的 side bearing 不同時，
+    // 用外框寬硬縮放就會出現「外框一樣寬，但字本身變瘦」的錯覺。
+    function captureOriginalInk(info){
+      if(!info || info.inkScanned)return;
+      info.inkScanned=true;
+      try{
+        const cssW=parseFloat(pdfCanvas.style.width)||cssViewport?.width||pdfCanvas.width;
+        const cssH=parseFloat(pdfCanvas.style.height)||cssViewport?.height||pdfCanvas.height;
+        const sx=pdfCanvas.width/cssW, sy=pdfCanvas.height/cssH;
+        const x0=Math.max(0,Math.floor(info.left*sx));
+        const y0=Math.max(0,Math.floor(info.top*sy));
+        const x1=Math.min(pdfCanvas.width,Math.ceil((info.left+info.width)*sx));
+        const y1=Math.min(pdfCanvas.height,Math.ceil((info.top+info.height)*sy));
+        const w=Math.max(1,x1-x0),h=Math.max(1,y1-y0);
+        const a=pdfCanvas.getContext('2d',{willReadFrequently:true}).getImageData(x0,y0,w,h).data;
+        let minX=w,maxX=-1;
+        for(let y=0;y<h;y++){
+          for(let x=0;x<w;x++){
+            const i=(y*w+x)*4,r=a[i],g=a[i+1],b=a[i+2],alpha=a[i+3];
+            // PDF 頁面通常是白底；與白色有足夠差異就視為原文字墨跡。
+            if(alpha>8 && Math.max(255-r,255-g,255-b)>24){
+              if(x<minX)minX=x;if(x>maxX)maxX=x;
+            }
+          }
+        }
+        if(maxX>=minX){
+          const inkLeftCss=(x0+minX)/sx;
+          const inkWidthCss=(maxX-minX+1)/sx;
+          info.inkOffsetPdf=(inkLeftCss-info.left)/zoom;
+          info.inkWidthPdf=inkWidthCss/zoom;
+        }else{
+          info.inkOffsetPdf=0;info.inkWidthPdf=info.pdfWidth;
+        }
+      }catch(err){
+        console.warn('ink scan fallback',err);
+        info.inkOffsetPdf=0;info.inkWidthPdf=info.pdfWidth;
+      }
+    }
+
+    function selectIdx(idx){
+      selectedIdx=idx;
+      document.querySelectorAll('.hit.selected').forEach(x=>x.classList.remove('selected'));
+      const hit=hitLayer.querySelector(`.hit[data-idx="${idx}"]`); if(hit)hit.classList.add('selected');
+      const info=infoByIdx.get(idx); if(!info)return;
+      captureOriginalInk(info);
+      const e=getEdit(pageNum,idx);
+      ensureFamilyOption(e?.fontFamily||info.family);
+      fontFamily.value=e?.fontFamily||info.family;
+      fontSize.value=Number(e?.fontSize||info.pdfFontSize).toFixed(3);
+      textColor.value=e?.color||'#000000';
+      boldBoost.value=Number(e?.boldBoost||0).toFixed(2);
+      lockWidth.checked=e?.lockWidth ?? true;
+      selectionTag.textContent=`${(e?.fontSize||info.pdfFontSize).toFixed(3)} pt · ${e?.fontFamily||info.family}`;
+      selectionTag.style.left=Math.max(0,info.left)+'px';selectionTag.style.top=Math.max(14,info.top-4)+'px';selectionTag.style.display='block';
+    }
+
+    function clearSelection(){
+      selectedIdx=null;selectionTag.style.display='none';
+      document.querySelectorAll('.hit.selected').forEach(x=>x.classList.remove('selected'));
+    }
+
+    function currentTextFor(idx){
+      const e=getEdit(pageNum,idx); return e?.newText ?? infoByIdx.get(idx)?.str ?? '';
+    }
+
+    function openEditor(idx,clientX=null){
+      const info=infoByIdx.get(idx); if(!info)return;
+      editorIdx=idx;
+      const e=getEdit(pageNum,idx);
+      editorOriginalText=e?.newText ?? info.str;
+      const family=e?.fontFamily||info.family;
+      const sizePt=Number(e?.fontSize||info.pdfFontSize);
+      const px=sizePt*zoom;
+      ensureFamilyOption(family);
+      fontFamily.value=family;fontSize.value=sizePt.toFixed(3);textColor.value=e?.color||'#000000';boldBoost.value=Number(e?.boldBoost||0).toFixed(2);lockWidth.checked=e?.lockWidth??true;
+
+      // 先把原文字/既有預覽蓋掉，讓編輯框就是頁面上的唯一文字。
+      drawEdits(idx);
+      const metrics=measureText(editorOriginalText||'H',family,px);
+      const asc=Math.max(px*.72,metrics.ascent);
+      inlineEditor.style.display='inline-block';
+      inlineEditor.style.left=info.left+'px';
+      inlineEditor.style.top=(info.baselineCss-asc)+'px';
+      inlineEditor.style.fontFamily=`"${family}", "Microsoft JhengHei", Arial, sans-serif`;
+      inlineEditor.style.fontSize=px+'px';inlineEditor.style.lineHeight='1';
+      inlineEditor.style.color=e?.color||'#000000';
+      inlineEditor.style.webkitTextStroke=(Math.max(0,Number(e?.boldBoost||0))*zoom)+'px '+(e?.color||'#000000');
+      inlineEditor.style.minWidth=Math.max(12,info.width)+'px';
+      inlineEditor.style.height=Math.max(info.height,px*1.15)+'px';
+      inlineEditor.textContent=editorOriginalText;
+      inlineEditor.focus({preventScroll:true});
+      placeCaret(clientX,info,e);
+    }
+
+    function placeCaret(clientX,info,e){
+      const node=inlineEditor.firstChild;if(!node)return;
+      const text=inlineEditor.textContent||'';
+      if(clientX==null){setCaret(node,text.length);return}
+      const rect=pageWrap.getBoundingClientRect();
+      let x=clientX-rect.left-info.left;
+      const family=e?.fontFamily||info.family, sizePx=Number(e?.fontSize||info.pdfFontSize)*zoom;
+      // inline editor 本身是自然比例顯示，游標定位也直接用自然字寬。
+      // 不要再套「鎖寬」縮放，否則點字時會覺得游標不靈敏。
+      const sx=1;
+      x/=sx;
+      let best=0,bestD=Infinity;
+      for(let i=0;i<=text.length;i++){
+        const w=measureText(text.slice(0,i),family,sizePx).width;
+        const d=Math.abs(w-x);if(d<bestD){bestD=d;best=i}
+      }
+      setCaret(node,best);
+    }
+    function setCaret(node,offset){const s=window.getSelection(),r=document.createRange();r.setStart(node,Math.min(offset,node.length));r.collapse(true);s.removeAllRanges();s.addRange(r)}
+
+    inlineEditor.addEventListener('keydown',ev=>{
+      if(ev.key==='Enter' && !ev.shiftKey){ev.preventDefault();closeEditor(true)}
+      else if(ev.key==='Escape'){ev.preventDefault();closeEditor(false)}
+    });
+    inlineEditor.addEventListener('input',()=>{
+      // 內容由真正的 inline editor 顯示；不重畫整頁，所以輸入不會卡。
+    });
+
+    async function closeEditor(commit){
+      if(editorIdx===null)return;
+      const idx=editorIdx,info=infoByIdx.get(idx),text=inlineEditor.textContent.replace(/\n/g,'');
+      inlineEditor.style.display='none';inlineEditor.textContent='';editorIdx=null;
+      if(commit && info){
+        const old=getEdit(pageNum,idx);
+        const changed=text!==info.str || !!old || fontFamily.value!==(old?.fontFamily||info.family) || Number(fontSize.value)!==Number(old?.fontSize||info.pdfFontSize) || textColor.value!==(old?.color||'#000000') || Number(boldBoost.value)!==Number(old?.boldBoost||0);
+        if(changed){
+          pushUndo();
+          upsertEdit({page:pageNum,idx,original:info.str,newText:text,fontFamily:fontFamily.value,
+            fontSize:Number(fontSize.value)||info.pdfFontSize,color:textColor.value,boldBoost:Number(boldBoost.value)||0,lockWidth:lockWidth.checked,
+            x:info.pdfX,baseline:info.pdfBaseline,width:info.pdfWidth,ascent:info.ascent,descent:info.descent,angle:info.pdfAngle,
+            inkOffset:info.inkOffsetPdf??0,inkWidth:info.inkWidthPdf??info.pdfWidth,baseFontSize:info.pdfFontSize});
+        }
+      }
+      drawEdits(); refreshHitEdited();
+      if(selectedIdx!==null)selectIdx(selectedIdx);
+    }
+
+    function pushUndo(){undoStack.push(cloneEdits());if(undoStack.length>80)undoStack.shift();redoStack=[];updateUndoButtons()}
+    function upsertEdit(e){edits=edits.filter(x=>!(x.page===e.page&&x.idx===e.idx));edits.push(e)}
+    function removeEdit(p,idx){edits=edits.filter(x=>!(x.page===p&&x.idx===idx))}
+
+    function drawEdits(excludeIdx=null){
+      const g=editCanvas.getContext('2d');
+      g.setTransform(1,0,0,1,0,0);g.clearRect(0,0,editCanvas.width,editCanvas.height);
+      g.setTransform(dpr,0,0,dpr,0,0);
+      for(const e of edits){
+        if(e.page!==pageNum || e.idx===excludeIdx)continue;
+        const info=infoByIdx.get(e.idx);if(!info)continue;
+        drawOnePreview(g,e,info);
+      }
+      if(excludeIdx!==null){
+        const info=infoByIdx.get(excludeIdx);if(info){
+          g.save();g.fillStyle='#fff';g.fillRect(info.left-2,info.top-2,info.width+4,info.height+4);g.restore();
+        }
+      }
+    }
+
+    function drawOnePreview(g,e,info){
+      const px=e.fontSize*zoom;
+      captureOriginalInk(info);
+      g.save();g.fillStyle='#fff';g.fillRect(info.left-1.5,info.top-1.5,info.width+3,info.height+3);g.restore();
+      g.save();
+      const mt=measureText(e.newText||' ',e.fontFamily,px);
+      const sizeRatio=Math.max(.001,Number(e.fontSize||info.pdfFontSize)/Math.max(.001,info.pdfFontSize));
+      const boostPt=Math.max(0,Number(e.boldBoost)||0);
+      // V5: 原字形寬度先按字級同比例伸縮。若 8pt 改 8.2pt，寬也應該 ×1.025，
+      // 而不是把 8.2pt 的字硬壓回 8pt 的寬度。微加粗的外擴也保留，不拿去抵銷。
+      const targetInkCss=((e.inkWidth??info.inkWidthPdf??info.pdfWidth)*sizeRatio + boostPt)*zoom;
+      const targetOffsetCss=(e.inkOffset??info.inkOffsetPdf??0)*sizeRatio*zoom;
+      let scaleX=1,originX=info.left;
+      if(e.lockWidth && mt.inkWidth>0){
+        const naturalInkWithBoost=mt.inkWidth + boostPt*zoom;
+        scaleX=targetInkCss/Math.max(.001,naturalInkWithBoost);
+        // actualBoundingBoxLeft 代表墨跡在文字原點左側多少 px。
+        // 反推文字原點，讓「真正看得到的第一個黑像素」跟原 PDF 對齊。
+        originX=info.left+targetOffsetCss+mt.left*scaleX;
+      }
+      g.translate(originX,info.baselineCss);
+      if(Math.abs(info.angle)>.0001)g.rotate(info.angle);
+      g.font=`${px}px "${e.fontFamily}", "Microsoft JhengHei", Arial, sans-serif`;
+      g.textBaseline='alphabetic';g.fillStyle=e.color||'#000';
+      if(e.lockWidth)g.scale(scaleX,1);
+      if(boostPt>0){
+        g.strokeStyle=e.color||'#000';g.lineWidth=boostPt*zoom;g.lineJoin='round';g.miterLimit=2;
+        g.strokeText(e.newText,0,0);
+      }
+      g.fillText(e.newText,0,0);
+      g.restore();
+    }
+
+    function measureText(text,family,sizePx){
+      measureCtx.font=`${sizePx}px "${family}", "Microsoft JhengHei", Arial, sans-serif`;
+      const m=measureCtx.measureText(text||' ');
+      const left=Number.isFinite(m.actualBoundingBoxLeft)?m.actualBoundingBoxLeft:0;
+      const right=Number.isFinite(m.actualBoundingBoxRight)?m.actualBoundingBoxRight:m.width;
+      return {width:m.width,inkWidth:Math.max(.01,left+right),left,right,
+        ascent:m.actualBoundingBoxAscent||sizePx*.82,descent:m.actualBoundingBoxDescent||sizePx*.22};
+    }
+
+    function refreshHitEdited(){
+      hitLayer.querySelectorAll('.hit').forEach(h=>h.classList.toggle('edited',!!getEdit(pageNum,Number(h.dataset.idx))));
+    }
+
+    function ensureFamilyOption(fam){
+      if(!fam)return;
+      if(![...fontFamily.options].some(o=>o.value===fam)){const op=document.createElement('option');op.value=fam;op.textContent=fam;fontFamily.prepend(op)}
+    }
+
+    // Word 式格式列：選到文字後可以直接改字型、字級、顏色。
+    fontFamily.addEventListener('change',()=>applyToolbarFormat());
+    fontSize.addEventListener('change',()=>applyToolbarFormat());
+    textColor.addEventListener('change',()=>applyToolbarFormat());
+    boldBoost.addEventListener('change',()=>applyToolbarFormat());
+    lockWidth.addEventListener('change',()=>applyToolbarFormat());
+
+    function applyToolbarFormat(push=true){
+      if(selectedIdx===null)return;
+      const info=infoByIdx.get(selectedIdx);if(!info)return;
+      if(editorIdx===selectedIdx){
+        const px=(Number(fontSize.value)||info.pdfFontSize)*zoom;
+        inlineEditor.style.fontFamily=`"${fontFamily.value}", "Microsoft JhengHei", Arial, sans-serif`;
+        inlineEditor.style.fontSize=px+'px';inlineEditor.style.color=textColor.value;
+        inlineEditor.style.webkitTextStroke=(Math.max(0,Number(boldBoost.value)||0)*zoom)+'px '+textColor.value;
+        return;
+      }
+      if(push)pushUndo();
+      const old=getEdit(pageNum,selectedIdx);
+      upsertEdit({page:pageNum,idx:selectedIdx,original:info.str,newText:old?.newText??info.str,
+        fontFamily:fontFamily.value,fontSize:Number(fontSize.value)||info.pdfFontSize,color:textColor.value,boldBoost:Number(boldBoost.value)||0,
+        lockWidth:lockWidth.checked,x:info.pdfX,baseline:info.pdfBaseline,width:info.pdfWidth,
+        ascent:info.ascent,descent:info.descent,angle:info.pdfAngle,
+        inkOffset:info.inkOffsetPdf??0,inkWidth:info.inkWidthPdf??info.pdfWidth,baseFontSize:info.pdfFontSize});
+      drawEdits();refreshHitEdited();selectIdx(selectedIdx);
+    }
+
+    brushBtn.addEventListener('click',async()=>{
+      if(selectedIdx===null){toast('先點一段要取樣的文字');return}
+      await closeEditor(true);
+      const info=infoByIdx.get(selectedIdx),e=getEdit(pageNum,selectedIdx);
+      brush={fontFamily:e?.fontFamily||info.family,fontSize:Number(e?.fontSize||info.pdfFontSize),color:e?.color||'#000000',boldBoost:Number(e?.boldBoost||0),lockWidth:e?.lockWidth??true};
+      brushArmed=true;brushBtn.classList.add('active');brushBtn.textContent='🖌 點目標';toast('格式已取樣，現在點另一段文字');
+    });
+    function applyBrushTo(idx){
+      if(!brush)return;
+      const info=infoByIdx.get(idx),old=getEdit(pageNum,idx);if(!info)return;
+      pushUndo();
+      upsertEdit({page:pageNum,idx,original:info.str,newText:old?.newText??info.str,fontFamily:brush.fontFamily,fontSize:brush.fontSize,
+        color:brush.color,boldBoost:brush.boldBoost||0,lockWidth:brush.lockWidth,x:info.pdfX,baseline:info.pdfBaseline,width:info.pdfWidth,
+        ascent:info.ascent,descent:info.descent,angle:info.pdfAngle,
+        inkOffset:info.inkOffsetPdf??0,inkWidth:info.inkWidthPdf??info.pdfWidth,baseFontSize:info.pdfFontSize});
+      brushArmed=false;brushBtn.classList.remove('active');brushBtn.textContent='🖌 格式刷';
+      drawEdits();refreshHitEdited();selectIdx(idx);toast('格式已刷過去');
+    }
+
+    $('#restoreBtn').addEventListener('click',async()=>{
+      if(selectedIdx===null)return;
+      await closeEditor(false);const had=!!getEdit(pageNum,selectedIdx);if(!had){toast('這段目前就是原字');return}
+      pushUndo();removeEdit(pageNum,selectedIdx);drawEdits();refreshHitEdited();selectIdx(selectedIdx);toast('已恢復原字');
+    });
+
+    $('#undoBtn').addEventListener('click',async()=>{
+      await closeEditor(true);if(!undoStack.length){toast('沒有可復原的動作');return}
+      redoStack.push(cloneEdits());edits=undoStack.pop();drawEdits();refreshHitEdited();updateUndoButtons();toast('已復原');
+    });
+    $('#redoBtn').addEventListener('click',async()=>{
+      await closeEditor(true);if(!redoStack.length){toast('沒有可重做的動作');return}
+      undoStack.push(cloneEdits());edits=redoStack.pop();drawEdits();refreshHitEdited();updateUndoButtons();toast('已重做');
+    });
+    function updateUndoButtons(){$('#undoBtn').disabled=!undoStack.length;$('#redoBtn').disabled=!redoStack.length}
+    updateUndoButtons();
+
+    $('#prevBtn').addEventListener('click',async()=>{if(pdfDoc&&pageNum>1){await closeEditor(true);pageNum--;await renderPage()}});
+    $('#nextBtn').addEventListener('click',async()=>{if(pdfDoc&&pageNum<pdfDoc.numPages){await closeEditor(true);pageNum++;await renderPage()}});
+    function updateNav(){$('#prevBtn').disabled=!pdfDoc||pageNum<=1;$('#nextBtn').disabled=!pdfDoc||pageNum>=pdfDoc.numPages}
+
+    $('#zoomInBtn').addEventListener('click',()=>setZoom(Math.min(3,zoom+.15)));
+    $('#zoomOutBtn').addEventListener('click',()=>setZoom(Math.max(.45,zoom-.15)));
+    async function setZoom(z){if(!pdfDoc)return;await closeEditor(true);zoom=z;await renderPage()}
+    $('#fitBtn').addEventListener('click',()=>fitWidth(false));
+    async function fitWidth(firstLoad=false){
+      if(!pdfDoc)return;
+      const page=await pdfDoc.getPage(pageNum),base=page.getViewport({scale:1});
+      const usable=Math.max(320,workspace.clientWidth-56);
+      zoom=Math.max(.45,Math.min(2.2,usable/base.width));
+      await renderPage();
+      if(firstLoad)workspace.scrollTop=0;
+    }
+
+    $('#saveBtn').addEventListener('click',exportPdf);
+    async function exportPdf(){
+      if(!pdfBytes){toast('先開啟 PDF');return}
+      await closeEditor(true);
+      if(!edits.length){toast('目前沒有修改');return}
+      fileStatus.textContent='正在輸出…';
+      try{
+        const {PDFDocument,rgb,degrees}=window.PDFLib;
+        const out=await PDFDocument.load(pdfBytes.slice());
+        for(const e of edits){
+          const p=out.getPage(e.page-1);
+          const pad=Math.max(.45,e.fontSize*.10);
+          const desc=Math.abs((e.descent??-.22)*e.fontSize),asc=Math.abs((e.ascent??.88)*e.fontSize);
+          const eraseY=e.baseline-desc-pad,eraseH=asc+desc+pad*2;
+          p.drawRectangle({x:e.x-pad,y:eraseY,width:e.width+pad*2,height:eraseH,color:rgb(1,1,1)});
+          // V5：字級改變時，鎖定寬度也按字級同比例變化；微加粗用同色 stroke 擴筆畫。
+          // 匯出時不要把「透明留白 + 文字」整張 PNG 強行壓到原寬。
+          // 只對字形本身做水平縮放，透明 padding 保持自然大小，否則會出現
+          // 編輯器裡看起來正常、匯出後卻變瘦而且往右偏的問題。
+          const sizeRatio=Math.max(.001,e.fontSize/Math.max(.001,e.baseFontSize||e.fontSize));
+          const boostPt=Math.max(0,Number(e.boldBoost)||0);
+          const targetInk=e.lockWidth ? ((e.inkWidth??e.width)*sizeRatio + boostPt) : null;
+          const raster=await rasterizeText(
+            e.newText,e.fontFamily,e.fontSize,e.color,targetInk,boostPt
+          );
+          const png=await out.embedPng(raster.dataUrl);
+          const y=e.baseline-raster.bottomToBaselinePdf;
+          const originalInkLeft=e.x+(e.inkOffset??0);
+          const drawX=e.lockWidth ? originalInkLeft-raster.inkLeftPdf : e.x;
+          p.drawImage(png,{
+            x:drawX,
+            y,
+            width:raster.widthPdf,
+            height:raster.heightPdf,
+            rotate:degrees((e.angle||0)*180/Math.PI)
+          });
+        }
+        const bytes=await out.save();
+        const blob=new Blob([bytes],{type:'application/pdf'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+        const base=(loadedName||'document').replace(/\.pdf$/i,'');a.href=url;a.download=`${base}_edited.pdf`;a.click();
+        setTimeout(()=>URL.revokeObjectURL(url),3000);
+        fileStatus.textContent=`完成 · ${edits.length} 處修改`;toast('PDF 已匯出');
+      }catch(err){console.error(err);fileStatus.textContent='輸出失敗';toast('輸出失敗，請開 Console 看錯誤')}
+    }
+
+    async function rasterizeText(text,family,sizePt,color,targetInkWidthPdf=null,boldBoostPt=0){
+      await document.fonts.ready;
+      const S=20,px=sizePt*S,value=text||' ';
+      const fontSpec=`${px}px "${family}", "Microsoft JhengHei", Arial, sans-serif`;
+
+      // 先在暫存 Canvas 畫一次，量「實際有墨跡的寬度」，不是 measureText().width。
+      const probe=document.createElement('canvas'),pg=probe.getContext('2d',{willReadFrequently:true});
+      pg.font=fontSpec;
+      const m=pg.measureText(value);
+      const asc=Math.ceil(m.actualBoundingBoxAscent||px*.84),des=Math.ceil(m.actualBoundingBoxDescent||px*.22);
+      const left=Math.max(0,Math.ceil(m.actualBoundingBoxLeft||0));
+      const right=Math.max(Math.ceil(m.width),Math.ceil(m.actualBoundingBoxRight||m.width));
+      const pad=Math.max(4,Math.ceil(px*.18));
+      probe.width=Math.max(4,pad*2+left+right+8);
+      probe.height=Math.max(4,pad*2+asc+des+8);
+      const p2=probe.getContext('2d',{willReadFrequently:true});
+      p2.font=fontSpec;p2.textBaseline='alphabetic';p2.fillStyle=color;
+      const probeOriginX=pad+left+2,probeBaseline=pad+asc+2;
+      if(boldBoostPt>0){
+        p2.strokeStyle=color;p2.lineWidth=boldBoostPt*S;p2.lineJoin='round';p2.miterLimit=2;
+        p2.strokeText(value,probeOriginX,probeBaseline);
+      }
+      p2.fillText(value,probeOriginX,probeBaseline);
+
+      function alphaBounds(canvas,ctx){
+        const d=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+        let minX=canvas.width,maxX=-1,minY=canvas.height,maxY=-1;
+        for(let y=0;y<canvas.height;y++)for(let x=0;x<canvas.width;x++){
+          if(d[(y*canvas.width+x)*4+3]>8){
+            if(x<minX)minX=x;if(x>maxX)maxX=x;if(y<minY)minY=y;if(y>maxY)maxY=y;
+          }
+        }
+        if(maxX<minX)return {minX:probeOriginX,maxX:probeOriginX,minY:probeBaseline,maxY:probeBaseline};
+        return {minX,maxX,minY,maxY};
+      }
+
+      const pb=alphaBounds(probe,p2);
+      const naturalInkPdf=Math.max(.001,(pb.maxX-pb.minX+1)/S);
+      const scaleX=(targetInkWidthPdf!=null && Number.isFinite(targetInkWidthPdf) && targetInkWidthPdf>0)
+        ? targetInkWidthPdf/naturalInkPdf : 1;
+
+      // 第二次用算出的 ink scale 真正輸出。保留透明邊界，但定位時會用 inkLeftPdf 扣掉，
+      // 因此透明 side-bearing 不會再把字往內擠。
+      const c=document.createElement('canvas');
+      c.width=Math.max(4,Math.ceil(pad*2+(left+right+8)*scaleX));
+      c.height=probe.height;
+      const g=c.getContext('2d',{willReadFrequently:true});
+      g.font=fontSpec;g.textBaseline='alphabetic';g.fillStyle=color;
+      const originX=pad+(left+2)*scaleX,baseline=probeBaseline;
+      g.save();g.translate(originX,baseline);g.scale(scaleX,1);
+      if(boldBoostPt>0){
+        g.strokeStyle=color;g.lineWidth=boldBoostPt*S;g.lineJoin='round';g.miterLimit=2;
+        g.strokeText(value,0,0);
+      }
+      g.fillText(value,0,0);g.restore();
+      const b=alphaBounds(c,g);
+      return {
+        dataUrl:c.toDataURL('image/png'),
+        widthPdf:c.width/S,
+        heightPdf:c.height/S,
+        bottomToBaselinePdf:(c.height-baseline)/S,
+        inkLeftPdf:b.minX/S,
+        inkWidthPdf:(b.maxX-b.minX+1)/S,
+        naturalInkPdf,scaleX
+      };
+    }
+
+    document.addEventListener('keydown',ev=>{
+      if(ev.ctrlKey && !ev.shiftKey && ev.key.toLowerCase()==='s'){ev.preventDefault();exportPdf();return}
+      if(inlineEditor.style.display!=='none')return;
+      if(ev.ctrlKey && !ev.shiftKey && ev.key.toLowerCase()==='z'){$('#undoBtn').click();ev.preventDefault()}
+      else if((ev.ctrlKey && ev.key.toLowerCase()==='y')||(ev.ctrlKey&&ev.shiftKey&&ev.key.toLowerCase()==='z')){$('#redoBtn').click();ev.preventDefault()}
+      else if(selectedIdx!==null && (ev.key==='Backspace'||ev.key==='Delete')){ev.preventDefault();openEditor(selectedIdx);inlineEditor.textContent='';setCaret(inlineEditor.firstChild||inlineEditor.appendChild(document.createTextNode('')),0)}
+      else if(selectedIdx!==null && ev.key.length===1 && !ev.ctrlKey && !ev.metaKey && !ev.altKey){ev.preventDefault();openEditor(selectedIdx);inlineEditor.textContent=ev.key;setCaret(inlineEditor.firstChild,1)}
+    });
+
+    window.addEventListener('resize',()=>{dpr=Math.max(1,Math.min(3,window.devicePixelRatio||1))});
+  </script>
+</body>
+</html>
